@@ -27,7 +27,7 @@ COMPLETED
 [x] Device discovery
 [x] WebRTC connection
 [x] File transfer
-[ ] Resume
+[x] Resume
 [ ] SHA-256 verification
 [ ] Performance tests
 
@@ -36,15 +36,14 @@ CURRENT TASK
 ------------------------------------------
 
 Task:
-Milestone 6: Large-file streaming
+Milestone 7: Backpressure
 
 ------------------------------------------
 NEXT TASK
 ------------------------------------------
 
-1. Convert memory reconstruction to streaming download where possible, or optimize buffer chunk processing
-2. Add Web Worker for SHA-256 calculation (Milestone 9 prep, but needed for large files)
-3. Ensure large files do not crash the browser memory
+1. Refine the backpressure mechanism
+2. Ensure UI updates smoothly during backpressure events
 
 ------------------------------------------
 FILES CHANGED

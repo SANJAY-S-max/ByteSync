@@ -36,9 +36,26 @@ let rttInterval = null;
 // Transfer State
 let fileToSend = null;
 let currentTransferMeta = null;
-let receivedChunks = [];
+let receivedChunks = []; // Fallback if no File System Access API
 let receivedBytes = 0;
 let transferStartTime = 0;
+
+let hashWorker = null;
+let fileHash = '';
+
+function initHashWorker() {
+    if (!hashWorker) {
+        hashWorker = new Worker('/workers/hash-worker.js');
+        hashWorker.onmessage = (e) => {
+            if (e.data.type === 'hash_result') {
+                fileHash = e.data.hash;
+                console.log('Calculated Hash:', fileHash);
+                document.getElementById('transferSpeed').textContent += ` (Hash: ${fileHash.substring(0,8)}...)`;
+            }
+        };
+    }
+    hashWorker.postMessage({ type: 'init' });
+}
 
 const rtcConfig = {
     iceServers: [
@@ -278,10 +295,20 @@ function setupControlChannel(channel) {
 
 function setupFileChannel(channel) {
     channel.binaryType = 'arraybuffer';
-    channel.onmessage = (event) => {
+    channel.onmessage = async (event) => {
         if (!currentTransferMeta) return;
         
-        receivedChunks.push(event.data);
+        // Hash it incrementally
+        if (hashWorker) {
+            hashWorker.postMessage({ type: 'update', chunk: event.data }, [event.data.slice(0)]);
+        }
+        
+        if (currentTransferMeta.writableStream) {
+            await currentTransferMeta.writableStream.write(event.data);
+        } else {
+            receivedChunks.push(event.data);
+        }
+        
         receivedBytes += event.data.byteLength;
         
         updateTransferProgress(receivedBytes, currentTransferMeta.size);
@@ -353,7 +380,25 @@ function handleFileOffer(meta) {
     document.getElementById('receiveSenderName').textContent = peerName;
 }
 
-function acceptFile() {
+async function acceptFile() {
+    // Attempt to get a file handle for streaming directly to disk
+    if (window.showSaveFilePicker) {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName: currentTransferMeta.name
+            });
+            currentTransferMeta.writableStream = await handle.createWritable();
+        } catch (e) {
+            console.log('User cancelled save dialog or it failed:', e);
+            rejectFile();
+            return;
+        }
+    } else {
+        console.warn('File System Access API not supported. Falling back to RAM buffering.');
+    }
+
+    initHashWorker();
+
     showScreen('transferScreen');
     document.getElementById('transferTitle').textContent = 'Receiving...';
     document.getElementById('transferFileName').textContent = currentTransferMeta.name;
@@ -371,6 +416,8 @@ async function startSendingFile() {
     document.getElementById('transferTitle').textContent = 'Sending...';
     transferStartTime = Date.now();
     
+    initHashWorker();
+
     const size = fileToSend.size;
     let offset = 0;
 
@@ -399,10 +446,19 @@ async function startSendingFile() {
         const chunkLen = Math.min(DEFAULT_CHUNK_SIZE, size - offset);
         const buffer = await readSlice(offset, chunkLen);
         
+        // Hash it incrementally
+        if (hashWorker) {
+            hashWorker.postMessage({ type: 'update', chunk: buffer }, [buffer.slice(0)]);
+        }
+        
         fileChannel.send(buffer);
         offset += chunkLen;
         
         updateTransferProgress(offset, size);
+    }
+    
+    if (hashWorker) {
+        hashWorker.postMessage({ type: 'finalize' });
     }
     
     controlChannel.send(JSON.stringify({ type: 'TRANSFER_COMPLETE' }));
@@ -414,25 +470,34 @@ async function startSendingFile() {
     }, 500);
 }
 
-function finishReceivingFile() {
-    const blob = new Blob(receivedChunks, { type: currentTransferMeta.mimeType });
-    const url = URL.createObjectURL(blob);
+async function finishReceivingFile() {
+    if (currentTransferMeta.writableStream) {
+        await currentTransferMeta.writableStream.close();
+        document.getElementById('transferSpeed').textContent = '✓ Saved to disk';
+    } else {
+        const blob = new Blob(receivedChunks, { type: currentTransferMeta.mimeType });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = currentTransferMeta.name;
+        a.click();
+        
+        URL.revokeObjectURL(url);
+        document.getElementById('transferSpeed').textContent = '✓ Download triggered';
+    }
     
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = currentTransferMeta.name;
-    a.click();
-    
-    URL.revokeObjectURL(url);
+    if (hashWorker) {
+        hashWorker.postMessage({ type: 'finalize' });
+    }
     
     document.getElementById('transferTitle').textContent = 'Transfer Complete!';
-    document.getElementById('transferSpeed').textContent = '✓ Download triggered';
     
     setTimeout(() => {
         showScreen('connectionScreen');
         currentTransferMeta = null;
         receivedChunks = [];
-    }, 3000);
+    }, 5000);
 }
 
 // ----------------------------------------------------
