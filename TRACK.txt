@@ -28,7 +28,7 @@ COMPLETED
 [x] WebRTC connection
 [x] File transfer
 [x] Backpressure
-[ ] SHA-256 verification
+[x] SHA-256 verification
 [ ] Performance tests
 
 ------------------------------------------
@@ -36,15 +36,15 @@ CURRENT TASK
 ------------------------------------------
 
 Task:
-Milestone 9: Resume
+Milestone 10: SHA-256 Verification
 
 ------------------------------------------
 NEXT TASK
 ------------------------------------------
 
-1. Save incoming partial file metadata and chunks in memory or disk to support resuming
-2. Add RESUME protocol message
-3. Sync offset and resume streaming
+1. Exchange final hashes over control channel
+2. Show hash match UI
+3. Highlight file as verified or corrupted
 
 ------------------------------------------
 FILES CHANGED

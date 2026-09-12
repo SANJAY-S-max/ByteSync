@@ -43,6 +43,8 @@ let transferStartTime = 0;
 let hashWorker = null;
 let fileHash = '';
 
+const pausedTransfers = new Map(); // peerId -> { meta, file, receivedBytes, receivedChunks, fileHandle }
+
 function initHashWorker() {
     if (!hashWorker) {
         hashWorker = new Worker('/workers/hash-worker.js');
@@ -286,6 +288,18 @@ function createPeerConnection(targetId) {
             document.getElementById('fileTransferSection').style.display = 'block';
             startRTTMeasurement();
             checkConnectionType();
+            
+            // Check if we need to resume
+            if (pausedTransfers.has(currentPeerId)) {
+                const state = pausedTransfers.get(currentPeerId);
+                if (state.isSender) {
+                    controlChannel.send(JSON.stringify({ 
+                        type: 'FILE_RESUME_OFFER', 
+                        data: { transferId: state.meta.transferId } 
+                    }));
+                }
+            }
+            
         } else if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
             handleConnectionDrop();
         }
@@ -296,17 +310,24 @@ function handleConnectionDrop() {
     if (currentTransferMeta) {
         document.getElementById('transferTitle').textContent = 'Transfer Interrupted';
         document.getElementById('transferTitle').style.color = 'var(--danger)';
-        document.getElementById('transferSpeed').textContent = 'Connection lost.';
+        document.getElementById('transferSpeed').textContent = 'Connection lost. Saved state for resume.';
         document.getElementById('transferSpeed').style.color = 'var(--danger)';
         
-        // In the future (Resume Milestone), we will save the state here
+        pausedTransfers.set(currentPeerId, {
+            meta: currentTransferMeta,
+            file: fileToSend,
+            receivedBytes: receivedBytes,
+            receivedChunks: receivedChunks,
+            fileHandle: currentTransferMeta.fileHandle,
+            isSender: !!fileToSend
+        });
         
         setTimeout(() => {
             disconnectPeer();
             showScreen('mainScreen');
             document.getElementById('transferTitle').style.color = '';
             document.getElementById('transferSpeed').style.color = '';
-        }, 5000);
+        }, 3000);
     } else {
         disconnectPeer();
         showScreen('mainScreen');
@@ -369,6 +390,12 @@ function handleControlMessage(msg) {
         case 'TRANSFER_COMPLETE':
             finishReceivingFile();
             break;
+        case 'FILE_RESUME_OFFER':
+            handleFileResumeOffer(msg.data);
+            break;
+        case 'FILE_RESUME_ACCEPT':
+            resumeSendingFile(msg.data.offset);
+            break;
     }
 }
 
@@ -409,12 +436,12 @@ function handleFileOffer(meta) {
 }
 
 async function acceptFile() {
-    // Attempt to get a file handle for streaming directly to disk
     if (window.showSaveFilePicker) {
         try {
             const handle = await window.showSaveFilePicker({
                 suggestedName: currentTransferMeta.name
             });
+            currentTransferMeta.fileHandle = handle;
             currentTransferMeta.writableStream = await handle.createWritable();
         } catch (e) {
             console.log('User cancelled save dialog or it failed:', e);
@@ -496,6 +523,7 @@ async function startSendingFile() {
     }
     
     controlChannel.send(JSON.stringify({ type: 'TRANSFER_COMPLETE' }));
+    pausedTransfers.delete(currentPeerId);
     
     setTimeout(() => {
         document.getElementById('transferTitle').textContent = 'Transfer Complete!';
@@ -534,9 +562,76 @@ async function finishReceivingFile() {
     }, 5000);
 }
 
-// ----------------------------------------------------
-// UTILS
-// ----------------------------------------------------
+// RESUME PROTOCOL
+async function handleFileResumeOffer(data) {
+    if (pausedTransfers.has(currentPeerId)) {
+        const state = pausedTransfers.get(currentPeerId);
+        if (state.meta.transferId === data.transferId && !state.isSender) {
+            
+            currentTransferMeta = state.meta;
+            receivedBytes = state.receivedBytes;
+            receivedChunks = state.receivedChunks || [];
+            
+            if (state.fileHandle) {
+                currentTransferMeta.fileHandle = state.fileHandle;
+                currentTransferMeta.writableStream = await state.fileHandle.createWritable({ keepExistingData: true });
+                await currentTransferMeta.writableStream.seek(receivedBytes);
+            }
+            
+            showScreen('transferScreen');
+            document.getElementById('transferTitle').textContent = 'Resuming Reception...';
+            document.getElementById('transferFileName').textContent = currentTransferMeta.name;
+            updateTransferProgress(receivedBytes, currentTransferMeta.size);
+            
+            initHashWorker();
+            
+            controlChannel.send(JSON.stringify({ 
+                type: 'FILE_RESUME_ACCEPT', 
+                data: { offset: receivedBytes } 
+            }));
+            
+            pausedTransfers.delete(currentPeerId);
+        }
+    }
+}
+
+async function resumeSendingFile(offset) {
+    if (!pausedTransfers.has(currentPeerId)) return;
+    const state = pausedTransfers.get(currentPeerId);
+    
+    fileToSend = state.file;
+    currentTransferMeta = state.meta;
+    
+    showScreen('transferScreen');
+    document.getElementById('transferTitle').textContent = 'Resuming Transmission...';
+    document.getElementById('transferFileName').textContent = currentTransferMeta.name;
+    
+    pausedTransfers.delete(currentPeerId);
+    
+    startSendingFileLoop(offset);
+}
+
+async function startSendingFile() {
+    document.getElementById('transferTitle').textContent = 'Sending...';
+    startSendingFileLoop(0);
+}
+
+async function startSendingFileLoop(startOffset) {
+    transferStartTime = Date.now();
+    initHashWorker();
+
+    const size = fileToSend.size;
+    let offset = startOffset;
+    
+    const readSlice = (o, length) => {
+        return new Promise((resolve, reject) => {
+            const slice = fileToSend.slice(o, o + length);
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(slice);
+        });
+    };
 
 function updateTransferProgress(current, total) {
     document.getElementById('transferProgressText').textContent = `${formatBytes(current)} / ${formatBytes(total)}`;
