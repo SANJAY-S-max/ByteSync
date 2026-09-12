@@ -42,8 +42,10 @@ let transferStartTime = 0;
 
 let hashWorker = null;
 let fileHash = '';
+let senderHash = null;
+let receiverHash = null;
 
-const pausedTransfers = new Map(); // peerId -> { meta, file, receivedBytes, receivedChunks, fileHandle }
+const pausedTransfers = new Map(); // peerId -> { meta, file, receivedBytes, receivedChunks, fileHandle, senderHash, receiverHash }
 
 function initHashWorker() {
     if (!hashWorker) {
@@ -52,11 +54,33 @@ function initHashWorker() {
             if (e.data.type === 'hash_result') {
                 fileHash = e.data.hash;
                 console.log('Calculated Hash:', fileHash);
-                document.getElementById('transferSpeed').textContent += ` (Hash: ${fileHash.substring(0,8)}...)`;
+                
+                if (fileToSend) {
+                    if (controlChannel && controlChannel.readyState === 'open') {
+                        controlChannel.send(JSON.stringify({
+                            type: 'FILE_HASH',
+                            data: { hash: fileHash }
+                        }));
+                    }
+                    document.getElementById('transferSpeed').innerHTML = `✓ Complete <br> <span style="color:var(--success)">SHA-256: ${fileHash.substring(0,8)}...</span>`;
+                } else {
+                    receiverHash = fileHash;
+                    verifyHash();
+                }
             }
         };
     }
     hashWorker.postMessage({ type: 'init' });
+}
+
+function verifyHash() {
+    if (!fileToSend && senderHash && receiverHash) {
+        if (senderHash === receiverHash) {
+            document.getElementById('transferSpeed').innerHTML = `✓ Saved <br> <span style="color:var(--success)">✓ Verified (SHA-256 Match: ${receiverHash.substring(0,8)}...)</span>`;
+        } else {
+            document.getElementById('transferSpeed').innerHTML = `✓ Saved <br> <span style="color:var(--danger)">✗ Corrupted (SHA-256 Mismatch)</span>`;
+        }
+    }
 }
 
 const rtcConfig = {
@@ -319,6 +343,8 @@ function handleConnectionDrop() {
             receivedBytes: receivedBytes,
             receivedChunks: receivedChunks,
             fileHandle: currentTransferMeta.fileHandle,
+            senderHash: senderHash,
+            receiverHash: receiverHash,
             isSender: !!fileToSend
         });
         
@@ -396,6 +422,10 @@ function handleControlMessage(msg) {
         case 'FILE_RESUME_ACCEPT':
             resumeSendingFile(msg.data.offset);
             break;
+        case 'FILE_HASH':
+            senderHash = msg.data.hash;
+            verifyHash();
+            break;
     }
 }
 
@@ -427,6 +457,8 @@ function handleFileOffer(meta) {
     currentTransferMeta = meta;
     receivedChunks = [];
     receivedBytes = 0;
+    senderHash = null;
+    receiverHash = null;
     
     showScreen('receiveScreen');
     document.getElementById('receiveFileName').textContent = meta.name;
@@ -535,7 +567,7 @@ async function startSendingFile() {
 async function finishReceivingFile() {
     if (currentTransferMeta.writableStream) {
         await currentTransferMeta.writableStream.close();
-        document.getElementById('transferSpeed').textContent = '✓ Saved to disk';
+        document.getElementById('transferSpeed').innerHTML = '✓ Saved to disk. Verifying...';
     } else {
         const blob = new Blob(receivedChunks, { type: currentTransferMeta.mimeType });
         const url = URL.createObjectURL(blob);
@@ -546,7 +578,7 @@ async function finishReceivingFile() {
         a.click();
         
         URL.revokeObjectURL(url);
-        document.getElementById('transferSpeed').textContent = '✓ Download triggered';
+        document.getElementById('transferSpeed').innerHTML = '✓ Download triggered. Verifying...';
     }
     
     if (hashWorker) {
@@ -559,7 +591,9 @@ async function finishReceivingFile() {
         showScreen('connectionScreen');
         currentTransferMeta = null;
         receivedChunks = [];
-    }, 5000);
+        senderHash = null;
+        receiverHash = null;
+    }, 7000); // 7 seconds so they can see the hash
 }
 
 // RESUME PROTOCOL
@@ -571,6 +605,8 @@ async function handleFileResumeOffer(data) {
             currentTransferMeta = state.meta;
             receivedBytes = state.receivedBytes;
             receivedChunks = state.receivedChunks || [];
+            senderHash = state.senderHash;
+            receiverHash = state.receiverHash;
             
             if (state.fileHandle) {
                 currentTransferMeta.fileHandle = state.fileHandle;

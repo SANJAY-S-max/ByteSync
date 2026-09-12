@@ -36,15 +36,15 @@ CURRENT TASK
 ------------------------------------------
 
 Task:
-Milestone 10: SHA-256 Verification
+Milestone 11: Performance Tests
 
 ------------------------------------------
 NEXT TASK
 ------------------------------------------
 
-1. Exchange final hashes over control channel
-2. Show hash match UI
-3. Highlight file as verified or corrupted
+1. Test small file speeds
+2. Test large file (e.g. 5GB+) speeds
+3. Ensure memory is stable during transfers
 
 ------------------------------------------
 FILES CHANGED
