@@ -167,6 +167,7 @@ h1 {
     color: var(--text-main);
 }
 
+/* Connection Screen Styles */
 .connection-screen {
     text-align: center;
 }
@@ -194,6 +195,7 @@ h1 {
     color: var(--text-muted);
 }
 
+/* Buttons */
 .btn {
     padding: 0.8rem 1.5rem;
     border: none;
@@ -202,6 +204,15 @@ h1 {
     cursor: pointer;
     font-weight: 600;
     transition: background 0.2s;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
 }
 
 .btn-secondary {
@@ -213,3 +224,43 @@ h1 {
     background: rgba(255,255,255,0.2);
 }
 
+.btn-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+/* File Transfer UI */
+.drop-zone {
+    border: 2px dashed rgba(255,255,255,0.2);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--primary);
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--text-main);
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 12px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    transition: width 0.1s linear;
+}

@@ -29,6 +29,7 @@
                 <span id="statusText">Connecting...</span>
             </div>
             
+            <!-- Main Discovery Screen -->
             <div id="mainScreen">
                 <div class="device-section">
                     <h2>Nearby Devices</h2>
@@ -44,6 +45,7 @@
                 </div>
             </div>
 
+            <!-- Connection Screen -->
             <div id="connectionScreen" class="connection-screen" style="display: none;">
                 <h2 id="connectionTitle">Connecting to...</h2>
                 <div class="connection-status-box">
@@ -60,8 +62,50 @@
                         <strong id="rttValue">- ms</strong>
                     </div>
                 </div>
-                <button id="disconnectBtn" class="btn btn-secondary">Disconnect</button>
+                
+                <div id="fileTransferSection" style="display: none; margin-top: 2rem;">
+                    <input type="file" id="fileInput" style="display: none;" />
+                    <button id="selectFileBtn" class="btn btn-primary" style="width: 100%; margin-bottom: 1rem;">Select File to Send</button>
+                    <div id="dropZone" class="drop-zone">
+                        Or drop a file here
+                    </div>
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <button id="disconnectBtn" class="btn btn-secondary">Disconnect</button>
+                </div>
             </div>
+
+            <!-- Transfer Screen (Sending/Receiving Progress) -->
+            <div id="transferScreen" class="connection-screen" style="display: none;">
+                <h2 id="transferTitle">Transferring...</h2>
+                <div class="connection-status-box" style="text-align: center;">
+                    <div id="transferFileName" style="font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem; word-break: break-all;">filename.ext</div>
+                    <div id="transferProgressText" style="color: var(--text-muted); margin-bottom: 1rem;">0 / 0 Bytes</div>
+                    
+                    <div class="progress-bar-container">
+                        <div id="transferProgressBar" class="progress-bar"></div>
+                    </div>
+                    
+                    <div id="transferSpeed" style="margin-top: 1rem; color: var(--success); font-weight: 600;"></div>
+                </div>
+                <button id="cancelTransferBtn" class="btn btn-secondary" style="margin-top: 1rem;">Cancel</button>
+            </div>
+
+            <!-- Receive Screen (Incoming request) -->
+            <div id="receiveScreen" class="connection-screen" style="display: none;">
+                <h2>Incoming file</h2>
+                <div class="connection-status-box" style="text-align: center;">
+                    <div id="receiveFileName" style="font-size: 1.2rem; font-weight: bold; word-break: break-all;">movie.mkv</div>
+                    <div id="receiveFileSize" style="color: var(--text-muted); margin: 0.5rem 0;">10 GB</div>
+                    <div style="margin-top: 1rem;">From: <strong id="receiveSenderName">...</strong></div>
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1rem;">
+                    <button id="acceptFileBtn" class="btn btn-primary">Accept</button>
+                    <button id="rejectFileBtn" class="btn btn-danger">Reject</button>
+                </div>
+            </div>
+            
         </main>
     </div>
 

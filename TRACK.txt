@@ -26,7 +26,7 @@ COMPLETED
 [x] WebSocket signaling
 [x] Device discovery
 [x] WebRTC connection
-[ ] File transfer
+[x] File transfer
 [ ] Resume
 [ ] SHA-256 verification
 [ ] Performance tests
@@ -36,17 +36,15 @@ CURRENT TASK
 ------------------------------------------
 
 Task:
-Milestone 5: Small-file transfer
+Milestone 6: Large-file streaming
 
 ------------------------------------------
 NEXT TASK
 ------------------------------------------
 
-1. Add drag-and-drop or file picker UI
-2. Implement file metadata handoff over control channel
-3. Stream small file via WebRTC file channel
-4. Handle incoming file and reconstruct in memory
-5. Trigger download of received file
+1. Convert memory reconstruction to streaming download where possible, or optimize buffer chunk processing
+2. Add Web Worker for SHA-256 calculation (Milestone 9 prep, but needed for large files)
+3. Ensure large files do not crash the browser memory
 
 ------------------------------------------
 FILES CHANGED

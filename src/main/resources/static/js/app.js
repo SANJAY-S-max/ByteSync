@@ -1,20 +1,26 @@
-// Generate cryptographically secure random ID
-function generateDeviceId() {
+// ByteSync WebRTC Logic
+const PROTOCOL_VERSION = 1;
+const DEFAULT_CHUNK_SIZE = 256 * 1024; // 256 KB initial chunk size
+
+function generateId() {
     const array = new Uint8Array(16);
     window.crypto.getRandomValues(array);
     return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// Generate a random fun name for the device
 function generateDeviceName() {
     const adjectives = ['Quantum', 'Neon', 'Cosmic', 'Hyper', 'Sonic', 'Cyber', 'Stellar', 'Ghost', 'Phantom', 'Midnight'];
     const nouns = ['Falcon', 'Panther', 'Wolf', 'Dragon', 'Phoenix', 'Ninja', 'Rider', 'Voyager', 'Nomad', 'Sphinx'];
-    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-    const noun = nouns[Math.floor(Math.random() * nouns.length)];
-    return `${adj} ${noun}`;
+    return `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
 }
 
-const myDeviceId = generateDeviceId();
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024, sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'], i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+const myDeviceId = generateId();
 const myDeviceName = generateDeviceName();
 
 let socket = null;
@@ -26,25 +32,62 @@ let controlChannel = null;
 let fileChannel = null;
 let currentPeerId = null;
 let rttInterval = null;
-let pingTime = 0;
+
+// Transfer State
+let fileToSend = null;
+let currentTransferMeta = null;
+let receivedChunks = [];
+let receivedBytes = 0;
+let transferStartTime = 0;
 
 const rtcConfig = {
     iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun.l.google.com:19302' }
     ]
 };
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('myDeviceName').textContent = myDeviceName;
     
+    // UI Event Listeners
     document.getElementById('disconnectBtn').addEventListener('click', () => {
         disconnectPeer();
-        showMainScreen();
+        showScreen('mainScreen');
     });
+
+    document.getElementById('selectFileBtn').addEventListener('click', () => {
+        document.getElementById('fileInput').click();
+    });
+
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelected(e.target.files[0]);
+        }
+    });
+
+    const dropZone = document.getElementById('dropZone');
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            handleFileSelected(e.dataTransfer.files[0]);
+        }
+    });
+
+    document.getElementById('acceptFileBtn').addEventListener('click', acceptFile);
+    document.getElementById('rejectFileBtn').addEventListener('click', rejectFile);
 
     connectWebSocket();
 });
+
+// ----------------------------------------------------
+// SIGNALING & DISCOVERY
+// ----------------------------------------------------
 
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -73,7 +116,7 @@ function connectWebSocket() {
         updateStatus('Disconnected', '');
         devices.clear();
         renderDevices();
-        setTimeout(connectWebSocket, 3000); // Reconnect attempt
+        setTimeout(connectWebSocket, 3000); 
     };
 }
 
@@ -93,7 +136,7 @@ async function handleSignalingMessage(msg) {
             renderDevices();
             if (currentPeerId === msg.data.id) {
                 disconnectPeer();
-                showMainScreen();
+                showScreen('mainScreen');
                 alert('Peer disconnected');
             }
             break;
@@ -120,7 +163,6 @@ async function initiateConnection(targetId) {
     
     createPeerConnection(targetId);
     
-    // Create data channels
     controlChannel = peerConnection.createDataChannel('control');
     setupControlChannel(controlChannel);
     
@@ -143,10 +185,7 @@ async function initiateConnection(targetId) {
 }
 
 async function handleOffer(msg) {
-    if (peerConnection) {
-        console.warn('Already connecting or connected, ignoring offer');
-        return;
-    }
+    if (peerConnection) return;
     
     currentPeerId = msg.senderId;
     const senderDevice = devices.get(msg.senderId);
@@ -217,59 +256,214 @@ function createPeerConnection(targetId) {
     
     peerConnection.onconnectionstatechange = () => {
         document.getElementById('connType').textContent = peerConnection.connectionState;
-        
         if (peerConnection.connectionState === 'connected') {
             document.getElementById('connType').innerHTML = '✓ Direct P2P';
             document.getElementById('connType').style.color = 'var(--success)';
+            document.getElementById('fileTransferSection').style.display = 'block';
             startRTTMeasurement();
             checkConnectionType();
         } else if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
             disconnectPeer();
-            showMainScreen();
+            showScreen('mainScreen');
         }
     };
 }
 
 function setupControlChannel(channel) {
-    channel.onopen = () => console.log('Control channel opened');
     channel.onmessage = (event) => {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'PONG') {
-            const rtt = Date.now() - msg.timestamp;
-            document.getElementById('rttValue').textContent = `${rtt} ms`;
-        } else if (msg.type === 'PING') {
-            controlChannel.send(JSON.stringify({ type: 'PONG', timestamp: msg.timestamp }));
-        }
+        handleControlMessage(msg);
     };
-    channel.onclose = () => console.log('Control channel closed');
 }
 
 function setupFileChannel(channel) {
     channel.binaryType = 'arraybuffer';
-    channel.onopen = () => console.log('File channel opened');
     channel.onmessage = (event) => {
-        // Future: Handle binary file chunks
-        console.log('Received file data:', event.data.byteLength, 'bytes');
+        if (!currentTransferMeta) return;
+        
+        receivedChunks.push(event.data);
+        receivedBytes += event.data.byteLength;
+        
+        updateTransferProgress(receivedBytes, currentTransferMeta.size);
     };
-    channel.onclose = () => console.log('File channel closed');
+}
+
+// ----------------------------------------------------
+// FILE TRANSFER LOGIC
+// ----------------------------------------------------
+
+function handleControlMessage(msg) {
+    switch (msg.type) {
+        case 'PING':
+            controlChannel.send(JSON.stringify({ type: 'PONG', timestamp: msg.timestamp }));
+            break;
+        case 'PONG':
+            const rtt = Date.now() - msg.timestamp;
+            document.getElementById('rttValue').textContent = `${rtt} ms`;
+            break;
+        case 'FILE_OFFER':
+            handleFileOffer(msg.data);
+            break;
+        case 'FILE_ACCEPT':
+            startSendingFile();
+            break;
+        case 'FILE_REJECT':
+            alert('File transfer was rejected by the peer.');
+            showScreen('connectionScreen');
+            break;
+        case 'TRANSFER_COMPLETE':
+            finishReceivingFile();
+            break;
+    }
+}
+
+function handleFileSelected(file) {
+    fileToSend = file;
+    const totalChunks = Math.ceil(file.size / DEFAULT_CHUNK_SIZE);
+    
+    const meta = {
+        protocolVersion: PROTOCOL_VERSION,
+        transferId: generateId(),
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+        chunkSize: DEFAULT_CHUNK_SIZE,
+        totalChunks: totalChunks
+    };
+
+    // Show waiting screen
+    showScreen('transferScreen');
+    document.getElementById('transferTitle').textContent = 'Waiting for acceptance...';
+    document.getElementById('transferFileName').textContent = file.name;
+    updateTransferProgress(0, file.size);
+    
+    // Send offer
+    controlChannel.send(JSON.stringify({ type: 'FILE_OFFER', data: meta }));
+}
+
+function handleFileOffer(meta) {
+    currentTransferMeta = meta;
+    receivedChunks = [];
+    receivedBytes = 0;
+    
+    showScreen('receiveScreen');
+    document.getElementById('receiveFileName').textContent = meta.name;
+    document.getElementById('receiveFileSize').textContent = formatBytes(meta.size);
+    const peerName = devices.has(currentPeerId) ? devices.get(currentPeerId).name : 'Peer';
+    document.getElementById('receiveSenderName').textContent = peerName;
+}
+
+function acceptFile() {
+    showScreen('transferScreen');
+    document.getElementById('transferTitle').textContent = 'Receiving...';
+    document.getElementById('transferFileName').textContent = currentTransferMeta.name;
+    updateTransferProgress(0, currentTransferMeta.size);
+    transferStartTime = Date.now();
+    controlChannel.send(JSON.stringify({ type: 'FILE_ACCEPT' }));
+}
+
+function rejectFile() {
+    controlChannel.send(JSON.stringify({ type: 'FILE_REJECT' }));
+    showScreen('connectionScreen');
+}
+
+async function startSendingFile() {
+    document.getElementById('transferTitle').textContent = 'Sending...';
+    transferStartTime = Date.now();
+    
+    const size = fileToSend.size;
+    let offset = 0;
+
+    const readSlice = (o, length) => {
+        return new Promise((resolve, reject) => {
+            const slice = fileToSend.slice(o, o + length);
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(slice);
+        });
+    };
+
+    while (offset < size) {
+        if (fileChannel.readyState !== 'open') {
+            console.error('File channel closed during transfer');
+            break;
+        }
+
+        // Backpressure check - limit buffered amount
+        if (fileChannel.bufferedAmount > 1024 * 1024 * 4) { // 4MB high water mark
+            await new Promise(resolve => setTimeout(resolve, 50));
+            continue;
+        }
+
+        const chunkLen = Math.min(DEFAULT_CHUNK_SIZE, size - offset);
+        const buffer = await readSlice(offset, chunkLen);
+        
+        fileChannel.send(buffer);
+        offset += chunkLen;
+        
+        updateTransferProgress(offset, size);
+    }
+    
+    controlChannel.send(JSON.stringify({ type: 'TRANSFER_COMPLETE' }));
+    
+    setTimeout(() => {
+        document.getElementById('transferTitle').textContent = 'Transfer Complete!';
+        document.getElementById('transferSpeed').textContent = '✓ Done';
+        setTimeout(() => showScreen('connectionScreen'), 3000);
+    }, 500);
+}
+
+function finishReceivingFile() {
+    const blob = new Blob(receivedChunks, { type: currentTransferMeta.mimeType });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = currentTransferMeta.name;
+    a.click();
+    
+    URL.revokeObjectURL(url);
+    
+    document.getElementById('transferTitle').textContent = 'Transfer Complete!';
+    document.getElementById('transferSpeed').textContent = '✓ Download triggered';
+    
+    setTimeout(() => {
+        showScreen('connectionScreen');
+        currentTransferMeta = null;
+        receivedChunks = [];
+    }, 3000);
+}
+
+// ----------------------------------------------------
+// UTILS
+// ----------------------------------------------------
+
+function updateTransferProgress(current, total) {
+    document.getElementById('transferProgressText').textContent = `${formatBytes(current)} / ${formatBytes(total)}`;
+    const percent = total > 0 ? (current / total) * 100 : 0;
+    document.getElementById('transferProgressBar').style.width = `${percent}%`;
+    
+    const elapsed = (Date.now() - transferStartTime) / 1000;
+    if (elapsed > 0.5 && current > 0) {
+        const speed = current / elapsed;
+        document.getElementById('transferSpeed').textContent = `${formatBytes(speed)}/s`;
+    }
 }
 
 function disconnectPeer() {
     if (rttInterval) clearInterval(rttInterval);
     if (controlChannel) controlChannel.close();
     if (fileChannel) fileChannel.close();
-    if (peerConnection) {
-        peerConnection.close();
-    }
+    if (peerConnection) peerConnection.close();
+    
     peerConnection = null;
     controlChannel = null;
     fileChannel = null;
     currentPeerId = null;
+    
+    document.getElementById('fileTransferSection').style.display = 'none';
 }
-
-// ----------------------------------------------------
-// STATS & DIAGNOSTICS
-// ----------------------------------------------------
 
 function startRTTMeasurement() {
     if (rttInterval) clearInterval(rttInterval);
@@ -301,22 +495,14 @@ async function checkConnectionType() {
             }
         }
     });
-    
     document.getElementById('networkType').textContent = networkType;
 }
 
-// ----------------------------------------------------
-// UI LOGIC
-// ----------------------------------------------------
-
 function updateStatus(text, className) {
     const indicator = document.getElementById('statusIndicator');
-    const textEl = document.getElementById('statusText');
-    
+    document.getElementById('statusText').textContent = text;
     indicator.className = 'status-indicator';
     if (className) indicator.classList.add(className);
-    
-    textEl.textContent = text;
 }
 
 function renderDevices() {
@@ -343,27 +529,12 @@ function renderDevices() {
     });
 }
 
-function showConnectionScreen(peerName) {
-    document.getElementById('mainScreen').style.display = 'none';
-    document.getElementById('connectionScreen').style.display = 'block';
-    document.getElementById('connectionTitle').textContent = `Connecting to ${escapeHtml(peerName)}...`;
-    
-    document.getElementById('connType').textContent = 'Connecting...';
-    document.getElementById('connType').style.color = 'var(--text-main)';
-    document.getElementById('networkType').textContent = '-';
-    document.getElementById('rttValue').textContent = '- ms';
-}
-
-function showMainScreen() {
-    document.getElementById('connectionScreen').style.display = 'none';
-    document.getElementById('mainScreen').style.display = 'block';
+function showScreen(screenId) {
+    ['mainScreen', 'connectionScreen', 'transferScreen', 'receiveScreen'].forEach(id => {
+        document.getElementById(id).style.display = (id === screenId) ? 'block' : 'none';
+    });
 }
 
 function escapeHtml(unsafe) {
-    return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
+    return unsafe.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]);
 }
