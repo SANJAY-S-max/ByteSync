@@ -128,12 +128,19 @@ function connectWebSocket() {
         handleSignalingMessage(msg);
     };
     
+    let reconnectTimeout = null;
     socket.onclose = () => {
         console.log('Disconnected from signaling server');
-        updateStatus('Disconnected', '');
-        devices.clear();
-        renderDevices();
-        setTimeout(connectWebSocket, 3000); 
+        updateStatus('Reconnecting...', '');
+        
+        // Clear devices after a delay if reconnect fails, or just let DIRECTORY replace them on reconnect
+        
+        if (!reconnectTimeout) {
+            reconnectTimeout = setTimeout(() => {
+                reconnectTimeout = null;
+                connectWebSocket();
+            }, 3000);
+        }
     };
 }
 
@@ -280,10 +287,30 @@ function createPeerConnection(targetId) {
             startRTTMeasurement();
             checkConnectionType();
         } else if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
-            disconnectPeer();
-            showScreen('mainScreen');
+            handleConnectionDrop();
         }
     };
+}
+
+function handleConnectionDrop() {
+    if (currentTransferMeta) {
+        document.getElementById('transferTitle').textContent = 'Transfer Interrupted';
+        document.getElementById('transferTitle').style.color = 'var(--danger)';
+        document.getElementById('transferSpeed').textContent = 'Connection lost.';
+        document.getElementById('transferSpeed').style.color = 'var(--danger)';
+        
+        // In the future (Resume Milestone), we will save the state here
+        
+        setTimeout(() => {
+            disconnectPeer();
+            showScreen('mainScreen');
+            document.getElementById('transferTitle').style.color = '';
+            document.getElementById('transferSpeed').style.color = '';
+        }, 5000);
+    } else {
+        disconnectPeer();
+        showScreen('mainScreen');
+    }
 }
 
 function setupControlChannel(channel) {
@@ -435,6 +462,7 @@ async function startSendingFile() {
     while (offset < size) {
         if (fileChannel.readyState !== 'open') {
             console.error('File channel closed during transfer');
+            handleConnectionDrop();
             break;
         }
 
