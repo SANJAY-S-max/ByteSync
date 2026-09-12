@@ -295,6 +295,7 @@ function setupControlChannel(channel) {
 
 function setupFileChannel(channel) {
     channel.binaryType = 'arraybuffer';
+    channel.bufferedAmountLowThreshold = 1024 * 1024; // 1 MB
     channel.onmessage = async (event) => {
         if (!currentTransferMeta) return;
         
@@ -437,10 +438,15 @@ async function startSendingFile() {
             break;
         }
 
-        // Backpressure check - limit buffered amount
-        if (fileChannel.bufferedAmount > 1024 * 1024 * 4) { // 4MB high water mark
-            await new Promise(resolve => setTimeout(resolve, 50));
-            continue;
+        // Backpressure check - limit buffered amount to 4MB
+        if (fileChannel.bufferedAmount > 4 * 1024 * 1024) {
+            document.getElementById('transferSpeed').textContent = 'Pacing transfer (network congested)...';
+            await new Promise(resolve => {
+                fileChannel.onbufferedamountlow = () => {
+                    fileChannel.onbufferedamountlow = null;
+                    resolve();
+                };
+            });
         }
 
         const chunkLen = Math.min(DEFAULT_CHUNK_SIZE, size - offset);

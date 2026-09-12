@@ -27,7 +27,7 @@ COMPLETED
 [x] Device discovery
 [x] WebRTC connection
 [x] File transfer
-[x] Resume
+[x] Backpressure
 [ ] SHA-256 verification
 [ ] Performance tests
 
@@ -36,14 +36,14 @@ CURRENT TASK
 ------------------------------------------
 
 Task:
-Milestone 7: Backpressure
+Milestone 8: Reconnection and error handling
 
 ------------------------------------------
 NEXT TASK
 ------------------------------------------
 
-1. Refine the backpressure mechanism
-2. Ensure UI updates smoothly during backpressure events
+1. Handle dropped WebRTC connections gracefully
+2. Handle signaling server reconnects
 
 ------------------------------------------
 FILES CHANGED
