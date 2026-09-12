@@ -166,3 +166,50 @@ h1 {
 .my-device strong {
     color: var(--text-main);
 }
+
+.connection-screen {
+    text-align: center;
+}
+
+.connection-status-box {
+    background: rgba(0,0,0,0.2);
+    padding: 1.5rem;
+    border-radius: 16px;
+    margin: 2rem 0;
+    text-align: left;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.8rem;
+    font-size: 1.1rem;
+}
+
+.status-row:last-child {
+    margin-bottom: 0;
+}
+
+.status-row span {
+    color: var(--text-muted);
+}
+
+.btn {
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+
+.btn-secondary {
+    background: rgba(255,255,255,0.1);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: rgba(255,255,255,0.2);
+}
+

@@ -29,17 +29,38 @@
                 <span id="statusText">Connecting...</span>
             </div>
             
-            <div class="device-section">
-                <h2>Nearby Devices</h2>
-                <div class="device-list" id="deviceList">
-                    <div class="empty-state" id="emptyState">
-                        Looking for nearby devices...
+            <div id="mainScreen">
+                <div class="device-section">
+                    <h2>Nearby Devices</h2>
+                    <div class="device-list" id="deviceList">
+                        <div class="empty-state" id="emptyState">
+                            Looking for nearby devices...
+                        </div>
                     </div>
                 </div>
+                
+                <div class="my-device">
+                    You are known as: <strong id="myDeviceName">...</strong>
+                </div>
             </div>
-            
-            <div class="my-device">
-                You are known as: <strong id="myDeviceName">...</strong>
+
+            <div id="connectionScreen" class="connection-screen" style="display: none;">
+                <h2 id="connectionTitle">Connecting to...</h2>
+                <div class="connection-status-box">
+                    <div class="status-row">
+                        <span>Connection:</span>
+                        <strong id="connType">Connecting...</strong>
+                    </div>
+                    <div class="status-row">
+                        <span>Network:</span>
+                        <strong id="networkType">-</strong>
+                    </div>
+                    <div class="status-row">
+                        <span>RTT:</span>
+                        <strong id="rttValue">- ms</strong>
+                    </div>
+                </div>
+                <button id="disconnectBtn" class="btn btn-secondary">Disconnect</button>
             </div>
         </main>
     </div>

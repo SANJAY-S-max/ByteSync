@@ -25,7 +25,7 @@ COMPLETED
 [x] Spring Boot application
 [x] WebSocket signaling
 [x] Device discovery
-[ ] WebRTC connection
+[x] WebRTC connection
 [ ] File transfer
 [ ] Resume
 [ ] SHA-256 verification
@@ -36,17 +36,17 @@ CURRENT TASK
 ------------------------------------------
 
 Task:
-Milestone 4: WebRTC connection
+Milestone 5: Small-file transfer
 
 ------------------------------------------
 NEXT TASK
 ------------------------------------------
 
-1. Implement RTCPeerConnection logic on frontend
-2. Send and handle WebRTC OFFER
-3. Send and handle WebRTC ANSWER
-4. Send and handle ICE candidates
-5. Establish a direct data channel
+1. Add drag-and-drop or file picker UI
+2. Implement file metadata handoff over control channel
+3. Stream small file via WebRTC file channel
+4. Handle incoming file and reconstruct in memory
+5. Trigger download of received file
 
 ------------------------------------------
 FILES CHANGED
