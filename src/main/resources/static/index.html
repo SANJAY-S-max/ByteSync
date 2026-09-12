@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ByteSync - Fast. Direct. Private.</title>
+    <meta name="description" content="Ultra-fast direct peer-to-peer file sharing">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <h1>ByteSync</h1>
+            </div>
+            <p class="tagline">Fast. Direct. Private.</p>
+            <div class="features">
+                <span>✓ Direct P2P</span>
+                <span>✓ No login</span>
+                <span>✓ No cloud upload</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="status-bar">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+            
+            <div class="device-section">
+                <h2>Nearby Devices</h2>
+                <div class="device-list" id="deviceList">
+                    <div class="empty-state" id="emptyState">
+                        Looking for nearby devices...
+                    </div>
+                </div>
+            </div>
+            
+            <div class="my-device">
+                You are known as: <strong id="myDeviceName">...</strong>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

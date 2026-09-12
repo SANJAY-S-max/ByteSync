@@ -24,7 +24,7 @@ COMPLETED
 [x] Project initialized
 [x] Spring Boot application
 [x] WebSocket signaling
-[ ] Device discovery
+[x] Device discovery
 [ ] WebRTC connection
 [ ] File transfer
 [ ] Resume
@@ -36,15 +36,17 @@ CURRENT TASK
 ------------------------------------------
 
 Task:
-Milestone 3: Device discovery
+Milestone 4: WebRTC connection
 
 ------------------------------------------
 NEXT TASK
 ------------------------------------------
 
-1. Create a frontend application to connect to WebSocket
-2. Implement device discovery logic on the client
-3. Update server logic if necessary for discovery
+1. Implement RTCPeerConnection logic on frontend
+2. Send and handle WebRTC OFFER
+3. Send and handle WebRTC ANSWER
+4. Send and handle ICE candidates
+5. Establish a direct data channel
 
 ------------------------------------------
 FILES CHANGED
