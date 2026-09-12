@@ -23,7 +23,7 @@ COMPLETED
 [x] Initial repository assessment
 [x] Project initialized
 [x] Spring Boot application
-[ ] WebSocket signaling
+[x] WebSocket signaling
 [ ] Device discovery
 [ ] WebRTC connection
 [ ] File transfer
@@ -36,16 +36,15 @@ CURRENT TASK
 ------------------------------------------
 
 Task:
-Milestone 2: WebSocket signaling
+Milestone 3: Device discovery
 
 ------------------------------------------
 NEXT TASK
 ------------------------------------------
 
-1. Create WebSocket configuration class
-2. Create signaling message models
-3. Create WebSocket handler
-4. Test WebSocket connections
+1. Create a frontend application to connect to WebSocket
+2. Implement device discovery logic on the client
+3. Update server logic if necessary for discovery
 
 ------------------------------------------
 FILES CHANGED
