@@ -1,0 +1,98 @@
+==========================================
+BYTESYNC DEVELOPMENT TRACKER
+==========================================
+
+Last Updated: 2026-09-12
+Current Branch: main
+Current Commit: 9fd99bc
+Project Version: 0.0.1-SNAPSHOT
+
+------------------------------------------
+CURRENT STATUS
+------------------------------------------
+
+Status: IN_PROGRESS
+
+Current Milestone:
+M1 - Project cleanup and Java/Spring Boot baseline
+
+------------------------------------------
+COMPLETED
+------------------------------------------
+
+[x] Initial repository assessment
+[x] Project initialized
+[x] Spring Boot application
+[ ] WebSocket signaling
+[ ] Device discovery
+[ ] WebRTC connection
+[ ] File transfer
+[ ] Resume
+[ ] SHA-256 verification
+[ ] Performance tests
+
+------------------------------------------
+CURRENT TASK
+------------------------------------------
+
+Task:
+Milestone 2: WebSocket signaling
+
+------------------------------------------
+NEXT TASK
+------------------------------------------
+
+1. Create WebSocket configuration class
+2. Create signaling message models
+3. Create WebSocket handler
+4. Test WebSocket connections
+
+------------------------------------------
+FILES CHANGED
+------------------------------------------
+
+
+------------------------------------------
+TEST STATUS
+------------------------------------------
+
+Unit: N/A
+Integration: N/A
+Browser: N/A
+Performance: N/A
+
+------------------------------------------
+PERFORMANCE
+------------------------------------------
+
+Test file:
+File size:
+Connection:
+Average speed:
+Peak speed:
+Verification:
+
+------------------------------------------
+KNOWN BUGS
+------------------------------------------
+
+
+------------------------------------------
+BLOCKERS
+------------------------------------------
+
+
+------------------------------------------
+LAST GIT COMMIT
+------------------------------------------
+9fd99bc Clean repository
+
+------------------------------------------
+NEXT GIT COMMIT
+------------------------------------------
+feat: add java spring boot baseline and project structure
+
+------------------------------------------
+HANDOFF
+------------------------------------------
+Start next session by reading TRACK.txt.
