@@ -23,6 +23,66 @@ function formatBytes(bytes) {
 const myDeviceId = generateId();
 const myDeviceName = generateDeviceName();
 
+let myPlatform = 'desktop';
+let myCoords = null;
+
+function detectDevicePlatform() {
+    const ua = navigator.userAgent;
+    if (/android/i.test(ua)) return 'android';
+    if (/iPad/.test(ua)) return 'tablet';
+    if (/iPhone|iPod/.test(ua)) return 'ios';
+    if (/windows phone/i.test(ua)) return 'windows';
+    if (/Macintosh/.test(ua)) return 'mac';
+    if (/Windows/.test(ua)) return 'windows';
+    if (/Linux/.test(ua)) return 'linux';
+    return 'desktop';
+}
+
+function getPlatformIcon(platform) {
+    switch (platform) {
+        case 'android': return 'fa-brands fa-android';
+        case 'ios':     return 'fa-brands fa-apple';
+        case 'tablet':  return 'fa-solid fa-tablet-screen-button';
+        case 'mac':     return 'fa-brands fa-apple';
+        case 'windows': return 'fa-brands fa-windows';
+        case 'linux':   return 'fa-brands fa-linux';
+        default:        return 'fa-solid fa-laptop';
+    }
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
+    const R = 6371e3; // metres
+    const f1 = lat1 * Math.PI / 180;
+    const f2 = lat2 * Math.PI / 180;
+    const df = (lat2 - lat1) * Math.PI / 180;
+    const dl = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(df / 2) * Math.sin(df / 2) +
+              Math.cos(f1) * Math.cos(f2) *
+              Math.sin(dl / 2) * Math.sin(dl / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c);
+}
+
+myPlatform = detectDevicePlatform();
+
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            myCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'JOIN',
+                    senderId: myDeviceId,
+                    data: { name: myDeviceName, platform: myPlatform, coords: myCoords }
+                }));
+            }
+        },
+        (err) => console.warn('Geolocation denied:', err),
+        { timeout: 5000 }
+    );
+}
+
 let socket = null;
 const devices = new Map();
 
@@ -85,12 +145,17 @@ function verifyHash() {
 
 const rtcConfig = {
     iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' }
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
     ]
 };
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('myDeviceName').textContent = myDeviceName;
+    const centerIcon = document.querySelector('#myDeviceNode i');
+    if (centerIcon) {
+        centerIcon.className = getPlatformIcon(myPlatform);
+    }
     
     // UI Event Listeners
     document.getElementById('disconnectBtn').addEventListener('click', () => {
@@ -124,6 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('acceptFileBtn').addEventListener('click', acceptFile);
     document.getElementById('rejectFileBtn').addEventListener('click', rejectFile);
+    document.getElementById('cancelTransferBtn').addEventListener('click', () => {
+        handleConnectionDrop();
+    });
 
     connectWebSocket();
 });
@@ -145,7 +213,7 @@ function connectWebSocket() {
         socket.send(JSON.stringify({
             type: 'JOIN',
             senderId: myDeviceId,
-            data: { name: myDeviceName }
+            data: { name: myDeviceName, platform: myPlatform, coords: myCoords }
         }));
     };
     
@@ -158,8 +226,6 @@ function connectWebSocket() {
     socket.onclose = () => {
         console.log('Disconnected from signaling server');
         updateStatus('Reconnecting...', '');
-        
-        // Clear devices after a delay if reconnect fails, or just let DIRECTORY replace them on reconnect
         
         if (!reconnectTimeout) {
             reconnectTimeout = setTimeout(() => {
@@ -209,7 +275,7 @@ async function handleSignalingMessage(msg) {
 async function initiateConnection(targetId) {
     currentPeerId = targetId;
     const targetDevice = devices.get(targetId);
-    showConnectionScreen(targetDevice.name);
+    showConnectionScreen(targetDevice ? targetDevice.name : 'Unknown Device');
     
     createPeerConnection(targetId);
     
@@ -305,26 +371,31 @@ function createPeerConnection(targetId) {
     };
     
     peerConnection.onconnectionstatechange = () => {
-        document.getElementById('connType').textContent = peerConnection.connectionState;
-        if (peerConnection.connectionState === 'connected') {
+        const state = peerConnection.connectionState;
+        document.getElementById('connType').textContent = state;
+
+        if (state === 'connected') {
             document.getElementById('connType').innerHTML = '✓ Direct P2P';
             document.getElementById('connType').style.color = 'var(--success)';
             document.getElementById('fileTransferSection').style.display = 'block';
             startRTTMeasurement();
             checkConnectionType();
-            
+            initChatUI();
+
             // Check if we need to resume
             if (pausedTransfers.has(currentPeerId)) {
-                const state = pausedTransfers.get(currentPeerId);
-                if (state.isSender) {
-                    controlChannel.send(JSON.stringify({ 
-                        type: 'FILE_RESUME_OFFER', 
-                        data: { transferId: state.meta.transferId } 
+                const saved = pausedTransfers.get(currentPeerId);
+                if (saved.isSender) {
+                    controlChannel.send(JSON.stringify({
+                        type: 'FILE_RESUME_OFFER',
+                        data: { transferId: saved.meta.transferId }
                     }));
                 }
             }
-            
-        } else if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+        } else if (state === 'connecting') {
+            document.getElementById('connType').textContent = '⟳ Connecting…';
+            document.getElementById('connType').style.color = 'var(--text-muted)';
+        } else if (state === 'disconnected' || state === 'failed') {
             handleConnectionDrop();
         }
     };
@@ -375,7 +446,8 @@ function setupFileChannel(channel) {
         
         // Hash it incrementally
         if (hashWorker) {
-            hashWorker.postMessage({ type: 'update', chunk: event.data }, [event.data.slice(0)]);
+            const workerChunk = event.data.slice(0);
+            hashWorker.postMessage({ type: 'update', chunk: workerChunk }, [workerChunk]);
         }
         
         if (currentTransferMeta.writableStream) {
@@ -399,10 +471,11 @@ function handleControlMessage(msg) {
         case 'PING':
             controlChannel.send(JSON.stringify({ type: 'PONG', timestamp: msg.timestamp }));
             break;
-        case 'PONG':
+        case 'PONG': {
             const rtt = Date.now() - msg.timestamp;
             document.getElementById('rttValue').textContent = `${rtt} ms`;
             break;
+        }
         case 'FILE_OFFER':
             handleFileOffer(msg.data);
             break;
@@ -426,6 +499,9 @@ function handleControlMessage(msg) {
             senderHash = msg.data.hash;
             verifyHash();
             break;
+        case 'CHAT':
+            appendChatMessage(msg.text, false);
+            break;
     }
 }
 
@@ -443,14 +519,15 @@ function handleFileSelected(file) {
         totalChunks: totalChunks
     };
 
-    // Show waiting screen
     showScreen('transferScreen');
-    document.getElementById('transferTitle').textContent = 'Waiting for acceptance...';
+    document.getElementById('transferTitle').textContent = 'Waiting for acceptance…';
     document.getElementById('transferFileName').textContent = file.name;
     updateTransferProgress(0, file.size);
     
-    // Send offer
     controlChannel.send(JSON.stringify({ type: 'FILE_OFFER', data: meta }));
+    
+    // Reset file input so same file can be selected again
+    document.getElementById('fileInput').value = '';
 }
 
 function handleFileOffer(meta) {
@@ -487,7 +564,7 @@ async function acceptFile() {
     initHashWorker();
 
     showScreen('transferScreen');
-    document.getElementById('transferTitle').textContent = 'Receiving...';
+    document.getElementById('transferTitle').textContent = 'Receiving…';
     document.getElementById('transferFileName').textContent = currentTransferMeta.name;
     updateTransferProgress(0, currentTransferMeta.size);
     transferStartTime = Date.now();
@@ -500,13 +577,17 @@ function rejectFile() {
 }
 
 async function startSendingFile() {
-    document.getElementById('transferTitle').textContent = 'Sending...';
+    document.getElementById('transferTitle').textContent = 'Sending…';
+    startSendingFileLoop(0);
+}
+
+async function startSendingFileLoop(startOffset) {
     transferStartTime = Date.now();
     
     initHashWorker();
 
     const size = fileToSend.size;
-    let offset = 0;
+    let offset = startOffset;
 
     const readSlice = (o, length) => {
         return new Promise((resolve, reject) => {
@@ -527,7 +608,7 @@ async function startSendingFile() {
 
         // Backpressure check - limit buffered amount to 4MB
         if (fileChannel.bufferedAmount > 4 * 1024 * 1024) {
-            document.getElementById('transferSpeed').textContent = 'Pacing transfer (network congested)...';
+            document.getElementById('transferSpeed').textContent = 'Pacing transfer (network congested)…';
             await new Promise(resolve => {
                 fileChannel.onbufferedamountlow = () => {
                     fileChannel.onbufferedamountlow = null;
@@ -541,7 +622,8 @@ async function startSendingFile() {
         
         // Hash it incrementally
         if (hashWorker) {
-            hashWorker.postMessage({ type: 'update', chunk: buffer }, [buffer.slice(0)]);
+            const workerChunk = buffer.slice(0);
+            hashWorker.postMessage({ type: 'update', chunk: workerChunk }, [workerChunk]);
         }
         
         fileChannel.send(buffer);
@@ -567,7 +649,7 @@ async function startSendingFile() {
 async function finishReceivingFile() {
     if (currentTransferMeta.writableStream) {
         await currentTransferMeta.writableStream.close();
-        document.getElementById('transferSpeed').innerHTML = '✓ Saved to disk. Verifying...';
+        document.getElementById('transferSpeed').innerHTML = '✓ Saved to disk. Verifying…';
     } else {
         const blob = new Blob(receivedChunks, { type: currentTransferMeta.mimeType });
         const url = URL.createObjectURL(blob);
@@ -578,7 +660,7 @@ async function finishReceivingFile() {
         a.click();
         
         URL.revokeObjectURL(url);
-        document.getElementById('transferSpeed').innerHTML = '✓ Download triggered. Verifying...';
+        document.getElementById('transferSpeed').innerHTML = '✓ Download triggered. Verifying…';
     }
     
     if (hashWorker) {
@@ -593,7 +675,7 @@ async function finishReceivingFile() {
         receivedChunks = [];
         senderHash = null;
         receiverHash = null;
-    }, 7000); // 7 seconds so they can see the hash
+    }, 7000);
 }
 
 // RESUME PROTOCOL
@@ -615,15 +697,15 @@ async function handleFileResumeOffer(data) {
             }
             
             showScreen('transferScreen');
-            document.getElementById('transferTitle').textContent = 'Resuming Reception...';
+            document.getElementById('transferTitle').textContent = 'Resuming Reception…';
             document.getElementById('transferFileName').textContent = currentTransferMeta.name;
             updateTransferProgress(receivedBytes, currentTransferMeta.size);
             
             initHashWorker();
             
-            controlChannel.send(JSON.stringify({ 
-                type: 'FILE_RESUME_ACCEPT', 
-                data: { offset: receivedBytes } 
+            controlChannel.send(JSON.stringify({
+                type: 'FILE_RESUME_ACCEPT',
+                data: { offset: receivedBytes }
             }));
             
             pausedTransfers.delete(currentPeerId);
@@ -639,35 +721,13 @@ async function resumeSendingFile(offset) {
     currentTransferMeta = state.meta;
     
     showScreen('transferScreen');
-    document.getElementById('transferTitle').textContent = 'Resuming Transmission...';
+    document.getElementById('transferTitle').textContent = 'Resuming Transmission…';
     document.getElementById('transferFileName').textContent = currentTransferMeta.name;
     
     pausedTransfers.delete(currentPeerId);
     
     startSendingFileLoop(offset);
 }
-
-async function startSendingFile() {
-    document.getElementById('transferTitle').textContent = 'Sending...';
-    startSendingFileLoop(0);
-}
-
-async function startSendingFileLoop(startOffset) {
-    transferStartTime = Date.now();
-    initHashWorker();
-
-    const size = fileToSend.size;
-    let offset = startOffset;
-    
-    const readSlice = (o, length) => {
-        return new Promise((resolve, reject) => {
-            const slice = fileToSend.slice(o, o + length);
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(slice);
-        });
-    };
 
 function updateTransferProgress(current, total) {
     document.getElementById('transferProgressText').textContent = `${formatBytes(current)} / ${formatBytes(total)}`;
@@ -691,8 +751,11 @@ function disconnectPeer() {
     controlChannel = null;
     fileChannel = null;
     currentPeerId = null;
+    fileToSend = null;
+    currentTransferMeta = null;
     
     document.getElementById('fileTransferSection').style.display = 'none';
+    document.getElementById('connType').style.color = '';
 }
 
 function startRTTMeasurement() {
@@ -735,36 +798,143 @@ function updateStatus(text, className) {
     if (className) indicator.classList.add(className);
 }
 
-function renderDevices() {
-    const listEl = document.getElementById('deviceList');
-    listEl.innerHTML = '';
-    
-    if (devices.size === 0) {
-        listEl.innerHTML = `<div class="empty-state">No nearby devices found. Waiting...</div>`;
-        return;
-    }
-    
-    devices.forEach((device) => {
-        const card = document.createElement('div');
-        card.className = 'device-card';
-        card.onclick = () => initiateConnection(device.id);
-        card.innerHTML = `
-            <div class="device-icon">💻</div>
-            <div class="device-info">
-                <h3>${escapeHtml(device.name)}</h3>
-                <p>Click to connect</p>
-            </div>
-        `;
-        listEl.appendChild(card);
-    });
-}
+// -------------------------------------------------------
+// SCREEN NAVIGATION
+// -------------------------------------------------------
 
+/**
+ * Shows a named screen and hides all others.
+ */
 function showScreen(screenId) {
     ['mainScreen', 'connectionScreen', 'transferScreen', 'receiveScreen'].forEach(id => {
-        document.getElementById(id).style.display = (id === screenId) ? 'block' : 'none';
+        const el = document.getElementById(id);
+        if (el) el.style.display = (id === screenId) ? 'block' : 'none';
     });
 }
 
+/**
+ * Navigates to the connectionScreen and sets the peer name in the title.
+ */
+function showConnectionScreen(peerName) {
+    showScreen('connectionScreen');
+    const titleEl = document.getElementById('connectionTitle');
+    if (titleEl) titleEl.textContent = `Connected to ${peerName}`;
+    // Reset connection stats
+    document.getElementById('connType').textContent = '⟳ Connecting…';
+    document.getElementById('connType').style.color = 'var(--text-muted)';
+    document.getElementById('networkType').textContent = '-';
+    document.getElementById('rttValue').textContent = '- ms';
+}
+
+// -------------------------------------------------------
+// RADAR RENDERING
+// -------------------------------------------------------
+
+function renderDevices() {
+    const radarContainer = document.getElementById('radarContainer');
+    if (!radarContainer) return;
+    
+    // Remove existing device nodes (keep center and scan)
+    radarContainer.querySelectorAll('.radar-node').forEach(n => n.remove());
+    
+    if (devices.size === 0) return;
+    
+    // Use the actual rendered size of the radar container
+    const radarWrapper = document.querySelector('.radar-wrapper');
+    const size = radarWrapper ? radarWrapper.offsetWidth : 300;
+    const center = size / 2;
+    const radius = size * 0.38; // 38% of total size keeps nodes inside the circle
+    
+    const angleStep = (2 * Math.PI) / devices.size;
+    let angle = -Math.PI / 2; // Start from top (12 o'clock)
+    
+    devices.forEach((device) => {
+        let distText = '';
+        if (myCoords && device.coords) {
+            const dist = calculateDistance(myCoords.lat, myCoords.lon, device.coords.lat, device.coords.lon);
+            if (dist !== null) {
+                distText = dist < 1000 ? `${dist}m away` : `${(dist / 1000).toFixed(1)}km`;
+            }
+        }
+        
+        const platformIcon = getPlatformIcon(device.platform);
+        
+        const node = document.createElement('div');
+        node.className = 'radar-node';
+        node.setAttribute('data-id', device.id);
+        node.setAttribute('title', device.name);
+        
+        const x = center + radius * Math.cos(angle);
+        const y = center + radius * Math.sin(angle);
+        
+        node.style.left = `${x}px`;
+        node.style.top = `${y}px`;
+        
+        node.onclick = () => initiateConnection(device.id);
+        
+        node.innerHTML = `
+            <i class="${platformIcon}"></i>
+            <div class="radar-node-info">
+                <strong>${escapeHtml(device.name)}</strong>
+                ${distText ? `<span>${distText}</span>` : ''}
+            </div>
+        `;
+        
+        radarContainer.appendChild(node);
+        angle += angleStep;
+    });
+}
+
+// Re-render on window resize so node positions stay correct on mobile
+window.addEventListener('resize', renderDevices);
+
+// -------------------------------------------------------
+// CHAT
+// -------------------------------------------------------
+
+function initChatUI() {
+    const chatSendBtn = document.getElementById('chatSendBtn');
+    const chatInput = document.getElementById('chatInput');
+    const chatMessages = document.getElementById('chatMessages');
+    
+    if (chatMessages) chatMessages.innerHTML = '<div class="chat-system-msg">Chat enabled via WebRTC.</div>';
+    
+    // Re-assign to avoid duplicate listeners (clone trick)
+    const newBtn = chatSendBtn.cloneNode(true);
+    chatSendBtn.parentNode.replaceChild(newBtn, chatSendBtn);
+    const newInput = chatInput.cloneNode(true);
+    chatInput.parentNode.replaceChild(newInput, chatInput);
+    
+    newBtn.onclick = () => sendChatMessage();
+    newInput.onkeypress = (e) => {
+        if (e.key === 'Enter') sendChatMessage();
+    };
+}
+
+function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (text && controlChannel && controlChannel.readyState === 'open') {
+        controlChannel.send(JSON.stringify({ type: 'CHAT', text: text }));
+        appendChatMessage(text, true);
+        input.value = '';
+    }
+}
+
+function appendChatMessage(text, isSelf) {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-msg ${isSelf ? 'self' : 'peer'}`;
+    msgDiv.textContent = text;
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// -------------------------------------------------------
+// UTILITY
+// -------------------------------------------------------
+
 function escapeHtml(unsafe) {
-    return unsafe.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]);
+    return unsafe.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]);
 }

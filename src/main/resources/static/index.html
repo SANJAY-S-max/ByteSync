@@ -2,17 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>ByteSync - Fast. Direct. Private.</title>
-    <meta name="description" content="Ultra-fast direct peer-to-peer file sharing">
+    <meta name="description" content="Ultra-fast direct peer-to-peer file sharing — no cloud, no login.">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <!-- Favicon: SVG (circular, crisp) primary; ICO fallback for legacy browsers -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
     <div class="container">
         <header>
             <div class="logo">
-                <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <svg viewBox="0 0 24 24" width="30" height="30" stroke="currentColor" stroke-width="2" fill="none"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
                 <h1>ByteSync</h1>
             </div>
             <p class="tagline">Fast. Direct. Private.</p>
@@ -26,32 +33,41 @@
         <main>
             <div class="status-bar">
                 <div class="status-indicator" id="statusIndicator"></div>
-                <span id="statusText">Connecting...</span>
-            </div>
-            
-            <!-- Main Discovery Screen -->
-            <div id="mainScreen">
-                <div class="device-section">
-                    <h2>Nearby Devices</h2>
-                    <div class="device-list" id="deviceList">
-                        <div class="empty-state" id="emptyState">
-                            Looking for nearby devices...
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="my-device">
-                    You are known as: <strong id="myDeviceName">...</strong>
-                </div>
+                <span id="statusText">Connecting…</span>
             </div>
 
-            <!-- Connection Screen -->
-            <div id="connectionScreen" class="connection-screen" style="display: none;">
-                <h2 id="connectionTitle">Connecting to...</h2>
+            <!-- ══════════════════════════════════════════════
+                 MAIN DISCOVERY SCREEN  (Radar)
+                 ══════════════════════════════════════════════ -->
+            <div id="mainScreen">
+                <div class="radar-wrapper">
+                    <div class="radar-container" id="radarContainer">
+                        <!-- My device — always at center -->
+                        <div class="radar-center" id="myDeviceNode">
+                            <i class="fa-solid fa-laptop"></i>
+                        </div>
+                        <!-- Sweeping radar line -->
+                        <div class="radar-scan"></div>
+                        <!-- Discovered peer nodes are injected here by JS -->
+                    </div>
+                </div>
+
+                <div class="my-device">
+                    You are: <strong id="myDeviceName">…</strong>
+                </div>
+                <p class="radar-hint">Tap a device on the radar to connect</p>
+            </div>
+
+            <!-- ══════════════════════════════════════════════
+                 CONNECTION SCREEN  (after clicking a peer)
+                 ══════════════════════════════════════════════ -->
+            <div id="connectionScreen" class="connection-screen" style="display:none;">
+                <h2 id="connectionTitle">Connecting to…</h2>
+
                 <div class="connection-status-box">
                     <div class="status-row">
                         <span>Connection:</span>
-                        <strong id="connType">Connecting...</strong>
+                        <strong id="connType">⟳ Connecting…</strong>
                     </div>
                     <div class="status-row">
                         <span>Network:</span>
@@ -62,50 +78,92 @@
                         <strong id="rttValue">- ms</strong>
                     </div>
                 </div>
-                
-                <div id="fileTransferSection" style="display: none; margin-top: 2rem;">
-                    <input type="file" id="fileInput" style="display: none;" />
-                    <button id="selectFileBtn" class="btn btn-primary" style="width: 100%; margin-bottom: 1rem;">Select File to Send</button>
+
+                <!-- File transfer — hidden until connection is established -->
+                <div id="fileTransferSection" style="display:none; margin-top:1.5rem;">
+                    <!-- Hidden real file input -->
+                    <input type="file" id="fileInput" style="display:none;" aria-hidden="true">
+                    <!-- Visible trigger button -->
+                    <button id="selectFileBtn" class="btn btn-primary" style="width:100%; margin-bottom:1rem;">
+                        <i class="fa-solid fa-file-arrow-up" style="margin-right:6px;"></i>Select File to Send
+                    </button>
                     <div id="dropZone" class="drop-zone">
+                        <i class="fa-solid fa-cloud-arrow-up" style="font-size:1.4rem; margin-bottom:0.4rem; display:block; opacity:0.5;"></i>
                         Or drop a file here
                     </div>
                 </div>
 
-                <div style="margin-top: 1.5rem;">
-                    <button id="disconnectBtn" class="btn btn-secondary">Disconnect</button>
+                <div style="margin-top:1.25rem;">
+                    <button id="disconnectBtn" class="btn btn-secondary">
+                        <i class="fa-solid fa-plug-circle-xmark" style="margin-right:6px;"></i>Disconnect
+                    </button>
+                </div>
+
+                <!-- Chat panel -->
+                <div id="chatContainer" class="chat-container">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-system-msg">Chat enabled via WebRTC.</div>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chatInput" placeholder="Type a message…" autocomplete="off">
+                        <button id="chatSendBtn" class="btn btn-primary" aria-label="Send message">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <!-- Transfer Screen (Sending/Receiving Progress) -->
-            <div id="transferScreen" class="connection-screen" style="display: none;">
-                <h2 id="transferTitle">Transferring...</h2>
-                <div class="connection-status-box" style="text-align: center;">
-                    <div id="transferFileName" style="font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem; word-break: break-all;">filename.ext</div>
-                    <div id="transferProgressText" style="color: var(--text-muted); margin-bottom: 1rem;">0 / 0 Bytes</div>
-                    
+            <!-- ══════════════════════════════════════════════
+                 TRANSFER PROGRESS SCREEN
+                 ══════════════════════════════════════════════ -->
+            <div id="transferScreen" class="connection-screen" style="display:none;">
+                <h2 id="transferTitle">Transferring…</h2>
+                <div class="connection-status-box" style="text-align:center;">
+                    <div id="transferFileName"
+                         style="font-weight:600; font-size:clamp(0.95rem,3.5vw,1.1rem); margin-bottom:0.5rem; word-break:break-all;">
+                        filename.ext
+                    </div>
+                    <div id="transferProgressText"
+                         style="color:var(--text-muted); margin-bottom:0.75rem; font-size:0.9rem;">
+                        0 / 0 Bytes
+                    </div>
                     <div class="progress-bar-container">
                         <div id="transferProgressBar" class="progress-bar"></div>
                     </div>
-                    
-                    <div id="transferSpeed" style="margin-top: 1rem; color: var(--success); font-weight: 600;"></div>
+                    <div id="transferSpeed"
+                         style="margin-top:0.75rem; color:var(--success); font-weight:600; font-size:0.95rem;"></div>
                 </div>
-                <button id="cancelTransferBtn" class="btn btn-secondary" style="margin-top: 1rem;">Cancel</button>
+                <button id="cancelTransferBtn" class="btn btn-secondary" style="margin-top:1rem;">Cancel</button>
             </div>
 
-            <!-- Receive Screen (Incoming request) -->
-            <div id="receiveScreen" class="connection-screen" style="display: none;">
-                <h2>Incoming file</h2>
-                <div class="connection-status-box" style="text-align: center;">
-                    <div id="receiveFileName" style="font-size: 1.2rem; font-weight: bold; word-break: break-all;">movie.mkv</div>
-                    <div id="receiveFileSize" style="color: var(--text-muted); margin: 0.5rem 0;">10 GB</div>
-                    <div style="margin-top: 1rem;">From: <strong id="receiveSenderName">...</strong></div>
+            <!-- ══════════════════════════════════════════════
+                 INCOMING FILE SCREEN
+                 ══════════════════════════════════════════════ -->
+            <div id="receiveScreen" class="connection-screen" style="display:none;">
+                <h2><i class="fa-solid fa-file-import" style="margin-right:8px; color:var(--primary);"></i>Incoming file</h2>
+                <div class="connection-status-box" style="text-align:center;">
+                    <div id="receiveFileName"
+                         style="font-size:clamp(1rem,4vw,1.2rem); font-weight:bold; word-break:break-all;">
+                        file.bin
+                    </div>
+                    <div id="receiveFileSize"
+                         style="color:var(--text-muted); margin:0.5rem 0; font-size:0.9rem;">
+                        0 B
+                    </div>
+                    <div style="margin-top:0.75rem; font-size:0.9rem;">
+                        From: <strong id="receiveSenderName">…</strong>
+                    </div>
                 </div>
-                <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1rem;">
-                    <button id="acceptFileBtn" class="btn btn-primary">Accept</button>
-                    <button id="rejectFileBtn" class="btn btn-danger">Reject</button>
+                <div style="display:flex; gap:1rem; justify-content:center; margin-top:1rem; flex-wrap:wrap;">
+                    <button id="acceptFileBtn" class="btn btn-primary">
+                        <i class="fa-solid fa-check" style="margin-right:6px;"></i>Accept
+                    </button>
+                    <button id="rejectFileBtn" class="btn btn-danger">
+                        <i class="fa-solid fa-xmark" style="margin-right:6px;"></i>Reject
+                    </button>
                 </div>
             </div>
-            
+
         </main>
     </div>
 

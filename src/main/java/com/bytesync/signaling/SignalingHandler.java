@@ -10,7 +10,6 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -54,30 +53,54 @@ public class SignalingHandler extends TextWebSocketHandler {
 
     private void handleJoin(WebSocketSession session, String deviceId, Object data) throws IOException {
         String deviceName = "Unknown Device";
-        if (data != null && data instanceof Map) {
+        String platform = "desktop";
+        Map<?, ?> coords = null;
+
+        if (data instanceof Map) {
             Map<?, ?> dataMap = (Map<?, ?>) data;
             if (dataMap.containsKey("name")) {
                 deviceName = (String) dataMap.get("name");
             }
+            if (dataMap.containsKey("platform")) {
+                platform = (String) dataMap.get("platform");
+            }
+            if (dataMap.containsKey("coords") && dataMap.get("coords") instanceof Map) {
+                coords = (Map<?, ?>) dataMap.get("coords");
+            }
         }
 
-        Device device = new Device(deviceId, deviceName, session);
+        final String finalPlatform = platform;
+        final Map<?, ?> finalCoords = coords;
+
+        Device device = new Device(deviceId, deviceName, finalPlatform, finalCoords, session);
         activeDevices.put(deviceId, device);
         sessionToDeviceMap.put(session.getId(), deviceId);
 
-        log.info("Device joined: {} ({})", deviceName, deviceId);
+        log.info("Device joined: {} ({}) platform={}", deviceName, deviceId, finalPlatform);
 
-        // Notify the new device about all currently active devices
-        Collection<Map<String, String>> deviceList = activeDevices.values().stream()
+        // Notify the new device about all currently active devices (include platform & coords)
+        java.util.List<Map<String, Object>> deviceList = activeDevices.values().stream()
                 .filter(d -> !d.getId().equals(deviceId))
-                .map(d -> Map.of("id", d.getId(), "name", d.getName()))
+                .map(d -> {
+                    java.util.Map<String, Object> m = new java.util.HashMap<>();
+                    m.put("id", d.getId());
+                    m.put("name", d.getName());
+                    m.put("platform", d.getPlatform() != null ? d.getPlatform() : "desktop");
+                    if (d.getCoords() != null) m.put("coords", d.getCoords());
+                    return m;
+                })
                 .collect(Collectors.toList());
 
         SignalingMessage directoryMsg = new SignalingMessage("DIRECTORY", "server", deviceId, deviceList);
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(directoryMsg)));
 
-        // Broadcast to all other devices that a new device joined
-        SignalingMessage peerJoinedMsg = new SignalingMessage("PEER_JOINED", "server", null, Map.of("id", deviceId, "name", deviceName));
+        // Broadcast PEER_JOINED to all other devices (include platform & coords)
+        java.util.Map<String, Object> peerData = new java.util.HashMap<>();
+        peerData.put("id", deviceId);
+        peerData.put("name", deviceName);
+        peerData.put("platform", finalPlatform);
+        if (finalCoords != null) peerData.put("coords", finalCoords);
+        SignalingMessage peerJoinedMsg = new SignalingMessage("PEER_JOINED", "server", null, peerData);
         broadcast(peerJoinedMsg, deviceId);
     }
 
